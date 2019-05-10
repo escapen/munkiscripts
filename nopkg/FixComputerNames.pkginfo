@@ -216,6 +216,6 @@ fi</string>
 	<key>unattended_install</key>
 	<true/>
 	<key>version</key>
-	<string>1.1</string>
+	<string>1.2</string>
 </dict>
 </plist>
