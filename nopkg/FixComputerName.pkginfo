@@ -42,6 +42,8 @@ cm_exists=0
 # Location of client manifest on client
 client_manifest='/Library/Managed Installs/manifests/client_manifest.plist'
 
+desired_name2=$(/usr/libexec/PlistBuddy -c "print :$key_for_name" "$client_manifest" | sed 's/_/-/g')
+
 if [ -f "$client_manifest" ]; then
 
 	cm_exists=1
@@ -73,9 +75,13 @@ check_name(){
     # Let's get the current name for the name type
     current_name=$(/usr/sbin/scutil --get "$1")
     # If they don't match, it's not installed
-    if [ "$current_name" != "$2" ]; then
+    if [ "$current_name" != "$2" ] ; [ "$1" != "LocalHostName" ]; then
         # It's not installed if any of these does not match
         exit 0
+		elif [ "$current_name" != "$desired_name2" ]; then
+		    exit 0
+		else
+		    exit 1
     fi
 }
 
@@ -92,10 +98,10 @@ if [ -z "$adconfig" ]; then
         # Check that the key we're looking for exists
         key_check=$(/usr/libexec/PlistBuddy -c 'print' "$client_manifest" | /usr/bin/grep "$key_for_name")
         if [ ! -z "$key_check" ]; then
-    
+
             # Get the actual key value and trim whitespace
             desired_name=$(/usr/libexec/PlistBuddy -c "print :$key_for_name" "$client_manifest")
-      
+
             # Make sure the desired_name isn't blank, because then you're renaming the computer to nothing
             if [ ! -z "$desired_name" ]; then
 
@@ -128,18 +134,21 @@ exit 1</string>
 	<key>postinstall_script</key>
 	<string>#!/bin/bash
 
-# Uncomment only one of these for what key holds the value for the computer name you want to set.
-#key_for_name='user'
-key_for_name='display_name'
-#key_for_name='notes'
+	# Uncomment only one of these for what key holds the value for the computer name you want to set.
 
-# Location of client manifest on client
-client_manifest='/Library/Managed Installs/manifests/client_manifest.plist'
+	#key_for_name='user'
+	key_for_name='display_name'
+	#key_for_name='notes'
 
-if [ -f "$client_manifest" ]; then
+	# Location of client manifest on client
+	client_manifest='/Library/Managed Installs/manifests/client_manifest.plist'
+
+	desired_name2=$(/usr/libexec/PlistBuddy -c "print :$key_for_name" "$client_manifest" | sed 's/_/-/g')
+
+	if [ -f "$client_manifest" ]; then
 
 	cm_exists=1
-else
+	else
 
 	# Get name of manifest
 	manifest_name=$(/bin/cat /Library/Managed\ Installs/Logs/ManagedSoftwareUpdate.log | /usr/bin/grep "Using manifest" | /usr/bin/tail -1 | /usr/bin/awk -F "Using manifest: " '{print $2}')
@@ -149,67 +158,69 @@ else
 
 	if [ -f "$cm_alternate" ]; then
 
-   	client_manifest="$cm_alternate"
+	  client_manifest="$cm_alternate"
 
-   	cm_exists=1
+	  cm_exists=1
 
 	fi
 
-fi
+	fi
 
-# Array of computer name types
-name_types=('ComputerName'
-'HostName'
-'LocalHostName')
+	# Array of computer name types
+	name_types=('ComputerName'
+	'HostName'
+	'LocalHostName')
 
-# Function to check desired name against current name. First parameter is name type, and second parameter is the desired name
-fix_name(){
-    # Let's get the current name for the name type
-    current_name=$(/usr/sbin/scutil --get "$1")
-    # If they don't match, make them match
-    if [ "$current_name" != "$2" ]; then
-        /usr/sbin/scutil --set "$1" "$2"
-    fi
-}
+	# Function to check desired name against current name. First parameter is name type, and second parameter is the desired name
+	fix_name(){
+	  # Let's get the current name for the name type
+	  current_name=$(/usr/sbin/scutil --get "$1")
+	  # If they don't match, make them match
+	  if [ "$current_name" != "$2" ] ; [ "$1" != "LocalHostName" ]; then
+	      /usr/sbin/scutil --set "$1" "$2"
+	  else
+	      /usr/sbin/scutil --set "$1" "$desired_name2"
+	  fi
+	}
 
-# Make sure the computer isn't joined to the domain
-adconfig=$(/usr/sbin/dsconfigad -show)
+	# Make sure the computer isn't joined to the domain
+	adconfig=$(/usr/sbin/dsconfigad -show)
 
-if [ -z "$adconfig" ]; then
+	if [ -z "$adconfig" ]; then
 
-    # Check the client manifest exists (it should)
-    if [ "$cm_exists"==1 ]; then
+	  # Check the client manifest exists (it should)
+	  if [ "$cm_exists"==1 ]; then
 
-        # Check that the key we're looking for exists
-        key_check=$(/usr/libexec/PlistBuddy -c 'print' "$client_manifest" | grep "$key_for_name")
-        if [ ! -z "$key_check" ]; then
+	      # Check that the key we're looking for exists
+	      key_check=$(/usr/libexec/PlistBuddy -c 'print' "$client_manifest" | grep "$key_for_name")
+	      if [ ! -z "$key_check" ]; then
 
-            # Get the actual key value and trim whitespace
-            desired_name=$(/usr/libexec/PlistBuddy -c "print :$key_for_name" "$client_manifest")
-        
-            # Make sure the desired_name isn't blank, because then you're renaming the computer to nothing
-            if [ ! -z "$desired_name" ]; then
+	          # Get the actual key value and trim whitespace
+	          desired_name=$(/usr/libexec/PlistBuddy -c "print :$key_for_name" "$client_manifest")
 
-                # Loop through the array of name types and process those
-                for name_type in "${name_types[@]}"
-                    do
-                        fix_name "$name_type" "$desired_name"
-                    done
+	          # Make sure the desired_name isn't blank, because then you're renaming the computer to nothing
+	          if [ ! -z "$desired_name" ]; then
 
-            # End checking the desired name isn't blank
-            fi
+	              # Loop through the array of name types and process those
+	              for name_type in "${name_types[@]}"
+	                  do
+	                      fix_name "$name_type" "$desired_name"
+	                  done
 
-        # End checking key exists
-        fi
+	          # End checking the desired name isn't blank
+	          fi
 
-    # End checking file exists
-    fi
+	      # End checking key exists
+	      fi
 
-# End checking not bound to AD
+	  # End checking file exists
+	  fi
+
+	# End checking not bound to AD
 fi</string>
 	<key>unattended_install</key>
 	<true/>
 	<key>version</key>
-	<string>1.1</string>
+	<string>1.3</string>
 </dict>
 </plist>
